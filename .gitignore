@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+
+# 运行时状态（记忆与账本，本地私产，不入库）
+.ctxfold/
+state.json
+ledger.jsonl
+
+# 实验产物：结果表入库，原始 run 不入库（体积 + 噪声）
+experiments/runs/
+
+# OS / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# 凭据：永不入库
+.secrets.env
+*.env
+.env.*

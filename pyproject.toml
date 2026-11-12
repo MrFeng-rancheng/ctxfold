@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ctxfold"
+version = "0.1.0"
+description = "Stateful reasoning runtime for code agents: memoize verified conclusions, recompute only what went stale."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ctxfold contributors" }]
+keywords = ["llm", "context", "kv-cache", "agent", "memory", "code"]
+dependencies = []
+
+[project.optional-dependencies]
+# 装上后 token 计数改用 cl100k_base，指标更准（否则退化为字符估算并显式标注）
+exact-tokens = ["tiktoken>=0.7"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+ctxfold = "ctxfold.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

@@ -1,0 +1,31 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  offline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: unit tests
+        run: PYTHONPATH=src python tests/test_core.py
+      - name: online harness e2e (local stub, zero cost)
+        run: PYTHONPATH=src python scripts/selftest_online.py
+      - name: selfcheck (docs vs code)
+        run: PYTHONPATH=src python scripts/selfcheck.py
+      - name: reproduce offline experiments
+        run: PYTHONPATH=src python experiments/reproduce.py --quick
+      - name: robustness smoke (stdlib subset)
+        run: PYTHONPATH=src python scripts/robustness.py --corpus "$(python -c 'import sysconfig;print(sysconfig.get_paths()["stdlib"])')" --limit 300
+      - name: show results
+        run: cat experiments/RESULTS.md
+      - name: upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: results
+          path: experiments/RESULTS.md
