@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import pathlib
 import re
 import subprocess
 import sys
@@ -132,6 +133,23 @@ def check_freshness() -> None:
     fail(f"RESULTS.md 与复现结果不一致（前几处）：\n{detail}\n（已用新结果覆盖仓库文件，请 review 后提交）")
 
 
+def check_figures() -> None:
+    """论文插图规范（对外部脚本的软依赖）：存在则必须全绿。"""
+    print("\n6) 插图规范（纯灰度 / 无图内标题 / 无圆角 / 字号 >= 22px）")
+    cand = [ROOT.parent / "paper_build" / "figure_check.py",
+            pathlib.Path.home() / "Desktop" / "插件开发" / "paper_build" / "figure_check.py"]
+    script = next((c for c in cand if c.exists()), None)
+    if script is None:
+        warn("未找到 figure_check.py（论文工程不在本机），跳过插图检查")
+        return
+    p = subprocess.run([PY, str(script)], capture_output=True, text=True, encoding="utf-8")
+    tail = [ln for ln in (p.stdout or "").splitlines() if ln.startswith("[") or ln.strip().startswith("-")]
+    if p.returncode == 0:
+        ok("插图检查通过：" + "；".join(tail))
+    else:
+        fail("插图不符合期刊规范：\n" + "\n".join("    " + t for t in tail))
+
+
 def main() -> int:
     print("ctxfold selfcheck")
     check_structure()
@@ -139,6 +157,7 @@ def main() -> int:
     check_refs()
     check_tests()
     check_freshness()
+    check_figures()
 
     print("\n" + "=" * 50)
     if FAILS:
