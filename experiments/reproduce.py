@@ -70,6 +70,7 @@ def main() -> int:
     ab = load(newest(before)); before = snapshot()
 
     run([PY, "experiments/m2b_isoacc.py", "--turns", turns])
+
     i1 = load(newest(before))
 
     t = m2["table"]
@@ -187,7 +188,32 @@ def main() -> int:
         "- summary 基线用**抽取式**摘要（非模型摘要），对它是偏保守的近似。",
         "",
     ]
+        # 多语料交叉验证（放在所有 load(newest) 之后，避免 run 目录干扰前面的步骤）
+    # quick: 3 语料 × 3 种子 × 20 轮（约 40s）；完整版见 python experiments/m9_multicorpus.py
+    m9_turns = "20" if args.quick else "30"
+    m9_seeds = "7,11,13" if args.quick else "7,11,13"
+    m9_out = ROOT / "experiments" / "runs" / "m9-reproduce" / "RESULTS-m9-smoke.md"
+    m9_corpora = (["http", "json", "asyncio"] if args.quick
+                  else ["http", "json", "unittest", "email", "asyncio", "this-repo"])
+    for name in m9_corpora:
+        run([PY, "experiments/m9_multicorpus.py", "--only", name, "--turns", m9_turns,
+             "--seeds", m9_seeds, "--out", str(m9_out)])
+    print(f"m9 smoke -> {m9_out}")
+
     (ROOT / "experiments" / "RESULTS.md").write_text("\n".join(lines), encoding="utf-8")
+
+    # 多语料交叉验证（放在所有 load(newest) 之后，避免 run 目录干扰前面步骤）
+    # quick: 3 语料 × 3 种子 × 20 轮（约 40s）；完整版见 python experiments/m9_multicorpus.py
+    m9_turns = "20" if args.quick else "30"
+    m9_seeds = "7,11,13" if args.quick else "7,11,13"
+    m9_out = ROOT / "experiments" / "runs" / "m9-reproduce" / "RESULTS-m9-smoke.md"
+    m9_corpora = (["http", "json", "asyncio"] if args.quick
+                  else ["http", "json", "unittest", "email", "asyncio", "this-repo"])
+    for name in m9_corpora:
+        run([PY, "experiments/m9_multicorpus.py", "--only", name, "--turns", m9_turns,
+             "--seeds", m9_seeds, "--out", str(m9_out)])
+    print(f"m9 smoke -> {m9_out}")
+
     print()
     print("\n".join(lines[4:16]))
     print(f"\nwritten: {ROOT / 'experiments' / 'RESULTS.md'}  ({time.time()-t0:.1f}s)")

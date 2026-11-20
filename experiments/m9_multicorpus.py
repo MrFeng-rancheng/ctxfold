@@ -68,6 +68,7 @@ def main() -> int:
     ap.add_argument("--turns", type=int, default=60)
     ap.add_argument("--seeds", default="7,11,13,17,19,23,29,31,37,41")
     ap.add_argument("--only", default="", help="只跑某个语料（名字包含该字符串）")
+    ap.add_argument("--out", default="", help="输出 md 路径（默认 experiments/RESULTS-m9.md）")
     args = ap.parse_args()
     seeds = [int(s) for s in args.seeds.split(",") if s.strip()]
 
@@ -145,9 +146,16 @@ def main() -> int:
     md += ["", "**读法**：`full` 是同一批任务的全量历史基线；C_cum 为累计 token 压缩率；",
            "R_prompt 为本轮 prompt 中可见的 gold 证据比例；R_avail 恒为 1.000 属定义使然（gold 与闭包同源），",
            "不作为性能主张。所有数字由 `experiments/reproduce.py` 重跑可复现。"]
-    (ROOT / "experiments" / "RESULTS-m9.md").write_text("\n".join(md) + "\n", encoding="utf-8")
+    out_md = Path(args.out) if args.out else (ROOT / "experiments" / "RESULTS-m9.md")
+    out_md.parent.mkdir(parents=True, exist_ok=True)
+    out_md.write_text("\n".join(md) + "\n", encoding="utf-8")
     (out_dir / "aggregate.json").write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\n写入 experiments/RESULTS-m9.md，明细 {out_dir}")
+    (out_dir / "summary.json").write_text(
+        json.dumps({"manifest": {"kind": "m9", "turns": args.turns, "seeds": seeds,
+                               "corpora": [r["corpus"] for r in rows]},
+                    "table": {"m9": {"corpora": len(rows), "runs": sum(r["n_runs"] for r in rows)}}},
+                   ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n写入 {out_md}，明细 {out_dir}")
     return 0
 
 
