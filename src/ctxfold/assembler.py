@@ -13,6 +13,7 @@
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 
@@ -20,6 +21,9 @@ from .chunker import Chunk
 from .tokenize import token_count
 
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# 中英混排修复（开关式）：汉字紧贴标识符时 \b 不成立，这里不要求词边界
+_IDENT_FIX = os.environ.get("CTXFOLD_IDENT_FIX", "") not in ("", "0", "false", "False")
+IDENT_FIX = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 
 
 @dataclass
@@ -118,7 +122,8 @@ def _query_symbols(
                 seen.add(cid)
                 hits.append((cid, True))
 
-    for tok in IDENT.findall(query):
+    _pat = IDENT_FIX if _IDENT_FIX else IDENT
+    for tok in _pat.findall(query):
         for i, cid in enumerate(index.get(tok, [])[:max_per_name]):
             if cid in seen:
                 continue

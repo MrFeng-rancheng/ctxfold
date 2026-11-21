@@ -79,13 +79,22 @@ def user_texts(path: Path) -> list[str]:
     return out
 
 
+SYS_MARKS = ('Current runtime context', 'Time sampled while preparing', 'system-reminder',
+             'goal_round', 'MODE:', 'Environment info', "here's the plan")
+
+
+def is_system_block(t: str) -> bool:
+    head = t.lstrip()[:60]
+    return head.startswith('<') or any(m in t[:400] for m in SYS_MARKS)
+
+
 def collect_queries() -> list[str]:
     qs: list[str] = []
     for dp, _dn, fn in os.walk(SESS):
         for f in fn:
             if f.endswith(".jsonl.zstd"):
                 qs.extend(user_texts(Path(dp) / f))
-    return qs
+    return [q for q in qs if not is_system_block(q)]
 
 
 def main() -> int:
