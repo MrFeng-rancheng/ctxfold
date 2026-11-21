@@ -98,7 +98,7 @@ def main() -> int:
             continue
 
         agg = {}
-        for method in ("full", "window", "summary", "grepriag", "compress", "memgpt", "ours"):
+        for method in ("full", "window", "summary", "grepriag", "shortsym", "compress", "memgpt", "ours"):
             agg[method] = {}
             for key in ("c_cum", "r_prompt", "r_avail", "r_prompt_far", "no_model_needed"):
                 vals = [t[method][key] for t in per_seed]
@@ -137,7 +137,7 @@ def main() -> int:
           "| 语料 | 方法 | 总 token | C_cum | R_prompt | R_prompt(长程) | R_avail |",
           "| --- | --- | --- | --- | --- | --- | --- |"]
     for rec in rows:
-        for method in ("full", "window", "summary", "grepriag", "compress", "memgpt", "ours"):
+        for method in ("full", "window", "summary", "grepriag", "shortsym", "compress", "memgpt", "ours"):
             a = rec["agg"][method]
             md.append("| {c} | {m} | {t:,.0f} | {c_cum:.3f}±{c_sd:.3f} | {r:.3f}±{r_sd:.3f} | "
                       "{rf:.3f}±{rf_sd:.3f} | {ra:.3f} |".format(

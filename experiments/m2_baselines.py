@@ -88,6 +88,20 @@ def run(method, tasks, by_cid, index, sha, bm25, budget, window=5, k=8):
             raw = {task["cid"]} | {c.cid for c in got}
             append, append_raw = own.text, {task["cid"]}
             raw = raw | (set().union(*[h["raw"] for h in tail]) if tail else set())
+        elif method == "shortsym":
+            # 朴素强基线：完全不看查询，把最短的符号先塞满预算，尽量让 prompt 装下更多符号
+            picked, used = [], 0
+            for c in sorted(by_cid.values(), key=lambda x: x.tokens):
+                if used + c.tokens > budget:
+                    continue
+                picked.append(c)
+                used += c.tokens
+                if used >= int(budget * 0.98):
+                    break
+            body = "\n\n".join(c.text for c in picked)
+            prompt = f"[符号池]\n{body}\n\n[问题] {task['query']}"
+            raw = {c.cid for c in picked}
+            append, append_raw = "", set()
         elif method == "grepriag":
             got = bm25.top_k(task["query"], k=k, budget=budget)
             body = "\n\n".join(c.text for c in got)
@@ -150,7 +164,7 @@ def main() -> int:
     tasks = build_tasks(chunks, args.turns, args.seed, locality=True, far_ref=0.4)
     print(f"chunks={len(chunks)} tasks={len(tasks)} far_ref={sum(1 for t in tasks if t['far_ref'])}")
 
-    methods = ["full", "window", "summary", "grepriag", "compress", "memgpt", "ours"]
+    methods = ["full", "window", "summary", "grepriag", "shortsym", "compress", "memgpt", "ours"]
     res = {m: run(m, tasks, by_cid, index, sha, bm25, args.budget, args.window, args.k) for m in methods}
     full_tokens = [r["tokens"] for r in res["full"]]
 
