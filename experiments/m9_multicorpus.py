@@ -32,6 +32,10 @@ CORPORA = [
     ("stdlib/unittest", STDLIB / "unittest"),
     ("stdlib/email", STDLIB / "email"),
     ("stdlib/asyncio", STDLIB / "asyncio"),
+    ("stdlib/collections", STDLIB / "collections"),
+    ("stdlib/typing", STDLIB / "typing"),
+    ("stdlib/logging", STDLIB / "logging"),
+    ("stdlib/urllib", STDLIB / "urllib"),
     ("this-repo", ROOT / "src"),
 ]
 
@@ -65,8 +69,8 @@ def mean_sd(values: list[float]) -> tuple[float, float]:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--turns", type=int, default=60)
-    ap.add_argument("--seeds", default="7,11,13,17,19,23,29,31,37,41")
+    ap.add_argument("--turns", type=int, default=100)
+    ap.add_argument("--seeds", default="7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83")
     ap.add_argument("--only", default="", help="只跑某个语料（名字包含该字符串）")
     ap.add_argument("--out", default="", help="输出 md 路径（默认 experiments/RESULTS-m9.md）")
     args = ap.parse_args()
@@ -94,7 +98,7 @@ def main() -> int:
             continue
 
         agg = {}
-        for method in ("full", "window", "summary", "grepriag", "ours"):
+        for method in ("full", "window", "summary", "grepriag", "compress", "memgpt", "ours"):
             agg[method] = {}
             for key in ("c_cum", "r_prompt", "r_avail", "r_prompt_far", "no_model_needed"):
                 vals = [t[method][key] for t in per_seed]
@@ -133,7 +137,7 @@ def main() -> int:
           "| 语料 | 方法 | 总 token | C_cum | R_prompt | R_prompt(长程) | R_avail |",
           "| --- | --- | --- | --- | --- | --- | --- |"]
     for rec in rows:
-        for method in ("full", "window", "summary", "grepriag", "ours"):
+        for method in ("full", "window", "summary", "grepriag", "compress", "memgpt", "ours"):
             a = rec["agg"][method]
             md.append("| {c} | {m} | {t:,.0f} | {c_cum:.3f}±{c_sd:.3f} | {r:.3f}±{r_sd:.3f} | "
                       "{rf:.3f}±{rf_sd:.3f} | {ra:.3f} |".format(

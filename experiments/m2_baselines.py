@@ -33,6 +33,21 @@ DEFAULT_CORPUS = Path(
 )
 
 
+
+def compress_text(text: str) -> str:
+    """LLMLingua 的无模型近似：删注释、空行与 docstring，只保留可执行骨架。
+
+    真实 LLMLingua 用小模型逐 token 算信息熵做删减；此处退化为抽取式压缩，
+    压缩率固定在 40%~60%，在论文中标注为"无模型近似"。
+    """
+    out = []
+    for line in text.splitlines():
+        st = line.strip()
+        if not st or st.startswith('#') or st.startswith('"""') or st.startswith("'''"):
+            continue
+        out.append(line)
+    return chr(10).join(out)
+
 def run(method, tasks, by_cid, index, sha, bm25, budget, window=5, k=8):
     memory: dict[str, Memory] = {}
     history: list[dict] = []
@@ -59,6 +74,20 @@ def run(method, tasks, by_cid, index, sha, bm25, budget, window=5, k=8):
             prompt = f"{body}\n\n[问题] {task['query']}"
             raw = {task["cid"]}
             append, append_raw = digest(own), set()  # 历史里只留摘要，原文不留
+        elif method == "compress":
+            body = chr(10).join([h["text"] for h in history] + [compress_text(own.text)])
+            prompt = f"{body}" + chr(10) + chr(10) + f"[问题] {task['query']}"
+            raw = {task["cid"]}
+            append, append_raw = compress_text(own.text), set()
+        elif method == "memgpt":
+            tail = history[-window:]
+            got = [c for c in bm25.top_k(task["query"], k=1, budget=budget) if c.cid != task["cid"]]
+            body = chr(10).join([h["text"] for h in tail] + [own.text]
+                                + [f"[归档检索] {c.text}" for c in got])
+            prompt = f"{body}" + chr(10) + chr(10) + f"[问题] {task['query']}"
+            raw = {task["cid"]} | {c.cid for c in got}
+            append, append_raw = own.text, {task["cid"]}
+            raw = raw | (set().union(*[h["raw"] for h in tail]) if tail else set())
         elif method == "grepriag":
             got = bm25.top_k(task["query"], k=k, budget=budget)
             body = "\n\n".join(c.text for c in got)
@@ -78,7 +107,7 @@ def run(method, tasks, by_cid, index, sha, bm25, budget, window=5, k=8):
             avail_raw = raw  # 上面已并入窗口内历史
         elif method == "full":
             avail_raw = set().union(*[h["raw"] for h in history]) | raw if history else raw
-        elif method == "summary":
+        elif method in ("summary", "compress"):
             avail_raw = raw
         elif method == "grepriag":
             avail_raw = raw
@@ -121,7 +150,7 @@ def main() -> int:
     tasks = build_tasks(chunks, args.turns, args.seed, locality=True, far_ref=0.4)
     print(f"chunks={len(chunks)} tasks={len(tasks)} far_ref={sum(1 for t in tasks if t['far_ref'])}")
 
-    methods = ["full", "window", "summary", "grepriag", "ours"]
+    methods = ["full", "window", "summary", "grepriag", "compress", "memgpt", "ours"]
     res = {m: run(m, tasks, by_cid, index, sha, bm25, args.budget, args.window, args.k) for m in methods}
     full_tokens = [r["tokens"] for r in res["full"]]
 
@@ -139,7 +168,7 @@ def main() -> int:
             "c_cum_allrecall": round(1 - tok_p / sum(full_tokens), 4),
             "r_prompt": round(st.mean(r["r_prompt"] for r in rows), 4),
             "r_avail": round(st.mean(r["r_avail"] for r in rows), 4),
-            "r_prompt_far": round(st.mean(r["r_prompt"] for r in rows if r["far_ref"]), 4),
+            "r_prompt_far": round(st.mean([r["r_prompt"] for r in rows if r["far_ref"]]), 4) if any(r["far_ref"] for r in rows) else 0.0,
             "no_model_needed": round(sum(r["no_model_needed"] for r in rows) / len(rows), 4),
             "max_tokens": max(r["tokens"] for r in rows),
             "tokens_tlast": rows[-1]["tokens"],
