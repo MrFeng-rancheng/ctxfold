@@ -139,7 +139,19 @@ def resolve_cid(by_cid, index, arg: str):
                   "例如 client.py::HTTPResponse.getheader")
 
 
+REPO_IDENT_NAMES: set[str] = set()
+GOLD_EMPTY_TASKS = {"n": 0}
+
+
+def set_repo_idents(index: dict) -> None:
+    """把索引里的符号名（小写）装进全局，供"仓库内口径"判分使用。"""
+    global REPO_IDENT_NAMES
+    REPO_IDENT_NAMES = {k.lower() for k in index}
+    REPO_IDENT_NAMES |= {k.split(".")[-1].lower() for k in index}
+
+
 def run_real(questions, by_cid, index, sha, budget, max_calls=3):
+    set_repo_idents(index)
     memory: dict[str, Memory] = {}
     history: list[str] = []
     rows = []
@@ -185,10 +197,28 @@ def run_real(questions, by_cid, index, sha, budget, max_calls=3):
                 break
             ok = check(answer, q["gold"])
             f1v = f1(answer, q["gold"]) if kind == "q_deps" else None
+            # 依赖题的"仓库内口径"：模型常把 len/keys/lower 这类内置名也报上来，
+            # 而标准答案只收仓库内可解析的被调用名。这里只看仓库内标识符。
+            repo_idents = {i for i in _idents(answer or "") if i in REPO_IDENT_NAMES}
+            gold_l = {g.lower() for g in q["gold"]} if isinstance(q["gold"], set) else set()
+            if kind == "q_deps":
+                if not gold_l:
+                    ok_repo = not repo_idents          # gold 为空时：不报仓库名才算对
+                    f1_repo = 1.0 if ok_repo else 0.0
+                else:
+                    tp = len(repo_idents & gold_l)
+                    p = tp / len(repo_idents) if repo_idents else 0.0
+                    r = tp / len(gold_l)
+                    f1_repo = (2 * p * r / (p + r)) if tp else 0.0
+                    ok_repo = repo_idents == gold_l
+            else:
+                ok_repo, f1_repo = None, None
             rows.append({
                 "kind": kind, "cid": task["cid"], "ok": ok, "tokens": tokens,
                 "gold": sorted(q["gold"]) if isinstance(q["gold"], set) else q["gold"],
                 "f1": (round(f1v, 4) if f1v is not None else None),
+                "f1_repo": (round(f1_repo, 4) if kind == "q_deps" else None),
+                "ok_repo": (bool(ok_repo) if kind == "q_deps" else None),
                 "answer": (answer or "")[:400],
                 "recalls": recalls, "error": err,
                 "usage_prompt": up, "usage_completion": uc, "recall_miss": recall_miss,
@@ -256,6 +286,9 @@ def main() -> int:
     ap.add_argument("--budget", type=int, default=1600)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--mode", choices=["mock", "real"], default="mock")
+    ap.add_argument("--tag", default="", help="附加到 run 目录名")
+    ap.add_argument("--answerable-only", action="store_true",
+                    help="只保留依赖题 gold 非空的题（gold 为空的题按构造必错）")
     args = ap.parse_args()
 
     corpus = Path(args.corpus)
@@ -265,10 +298,12 @@ def main() -> int:
 
     chunks, index, sha = load_corpus(corpus)
     by_cid = {c.cid: c for c in chunks}
-    questions = make_questions(by_cid, chunks, args.tasks, args.seed)
+    questions = make_questions(by_cid, chunks, args.tasks * 2, args.seed)
+    if args.answerable_only:
+        questions = [q for q in questions if q["q_deps"]["gold"]][: args.tasks]
 
     out = ROOT / "experiments" / "runs" / (
-        datetime.now().strftime("%Y%m%d-%H%M%S") + f"-m3-{args.mode}")
+        datetime.now().strftime("%Y%m%d-%H%M%S") + f"-m3-{args.mode}" + (f"-{args.tag}" if args.tag else ""))
     out.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "real":
@@ -297,6 +332,11 @@ def main() -> int:
             "A_by_kind": {k: round(sum(1 for r in v if r["ok"]) / len(v), 4)
                           for k, v in by_kind.items()},
             "f1_deps_mean": round(st.mean([r["f1"] for r in rows if r["f1"] is not None] or [0]), 4),
+            "A_repo_deps": round(sum(1 for r in rows if r["kind"] == "q_deps" and r.get("ok_repo"))
+                                 / max(1, sum(1 for r in rows if r["kind"] == "q_deps")), 4),
+            "f1_repo_deps_mean": round(st.mean([r["f1_repo"] for r in rows
+                                                if r["kind"] == "q_deps" and r.get("f1_repo") is not None] or [0]), 4),
+            "deps_gold_empty": sum(1 for r in rows if r["kind"] == "q_deps" and not r["gold"]),
             "recall_by_kind": {k: round(sum(1 for r in v if r["recalls"] > 0) / len(v), 4)
                                for k, v in by_kind.items()},
             "recall_miss_total": sum(r["recall_miss"] for r in rows),

@@ -1,0 +1,37 @@
+[arm B] boost=1 tasks=30
+{
+  "manifest": {
+    "mode": "real",
+    "base": "https://api.siliconflow.cn/v1",
+    "model": "deepseek-ai/DeepSeek-V3.2",
+    "tasks": 30,
+    "tokenizer": "estimator:chars/3.5",
+    "estimate": true,
+    "budget": 1600
+  },
+  "A": 0.5111,
+  "H": 0.3333,
+  "recall_rate": 0.5778,
+  "tokens_mean": 2480.0,
+  "tokens_total": 223201,
+  "usage_prompt_total": 144941,
+  "usage_completion_total": 11832,
+  "A_by_kind": {
+    "q_locate": 1.0,
+    "q_deps": 0.0,
+    "q_exc": 0.5333
+  },
+  "f1_deps_mean": 0.2063,
+  "A_repo_deps": 0.0,
+  "f1_repo_deps_mean": 0.2707,
+  "deps_gold_empty": 0,
+  "recall_by_kind": {
+    "q_locate": 0.0,
+    "q_deps": 0.7333,
+    "q_exc": 1.0
+  },
+  "recall_miss_total": 1,
+  "errors": []
+}
+run dir: C:\Users\13956\Desktop\插件开发\ctxfold\experiments\runs\20261122-222154-m3-real
+[arm B] rc=0

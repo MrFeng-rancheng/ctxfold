@@ -77,20 +77,38 @@ def _claims(memory: dict[str, Memory], cids: list[str]) -> str:
     return chr(10).join(lines)
 
 
-def _cards(chunks_by_cid: dict[str, Chunk], cids: list[str]) -> str:
+def _cards(chunks_by_cid: dict[str, Chunk], cids: list[str], full_calls: bool = False,
+           repo_names: set[str] | None = None) -> str:
     """摘要卡：id + 位置 + 签名首行 + 被调用名。
 
     为什么不是"只给 id"：占位符只给 id 时，模型必须 recall 才知道任何细节，
     连"这个函数在哪一行"这种问题都要多花一次往返。
-    卡片大概 20-40 token，却能直接回答定位类与依赖类问题——
-    这是"便宜但有用"与"免费但无用"的分界线。
+
+    为什么要区分 repo / ext：标准答案只收"仓库内可解析的被调用名"，
+    而 len/keys/lower 这类内置名会把答案的精确率拉低。卡上直接标出来，
+    模型才知道哪些名字该报。
     """
     lines = ["[已固化摘要卡：细节可按 #id recall 原文]"]
     for cid in cids:
         ck = chunks_by_cid[cid]
         first = (ck.text.strip().splitlines() or [""])[0].strip()[:70]
-        calls = ", ".join((ck.call_order or [])[:6]) or "none"
-        lines.append(f"- #{cid} | {ck.path}:{ck.start}-{ck.end} | {first} | calls: {calls}")
+        calls = list(ck.call_order or [])
+        # 仓库内被调用名：用依赖边解析出**限定名**（HTTPMethod.__new__），
+        # 而不是叶子名（__new__）——判分与阅读都需要限定名。
+        dep_cids = [d for d in (getattr(ck, "deps", []) or []) if d in chunks_by_cid]
+        repo = [chunks_by_cid[d].name for d in dep_cids]
+        repo_leaf = {n.split(".")[-1] for n in repo}
+        if repo_names is not None:
+            ext = [c for c in calls if c not in repo_names and c not in repo_leaf]
+        else:
+            ext = [c for c in calls if c not in repo_leaf]
+        if not full_calls:
+            repo = repo[:6]
+        seg = f"- #{cid} | {ck.path}:{ck.start}-{ck.end} | {first}"
+        seg += " | calls(repo): " + (", ".join(repo) if repo else "（无，均为内置/外部）")
+        if ext:
+            seg += " | calls(ext): " + ", ".join(ext if full_calls else ext[:6])
+        lines.append(seg)
     return "\n".join(lines)
 
 
@@ -190,6 +208,21 @@ def assemble(
         + (f" ablate={sorted(ablate)}" if ablate else "")
     )
 
+    # 依赖类查询：问"直接调用了哪些函数"时，把命中符号的直接被调用项
+    # 从"纯 ID 占位符"提升为摘要卡（卡里带 calls(repo) 列表），
+    # 否则模型只看到一个 id，答不出完整的被调用名集合。
+    import os as _os
+    _boost = _os.environ.get("CTXFOLD_DEPS_BOOST", "1") not in ("0", "false", "False")
+    deps_intent = _boost and bool(re.search(r"调用|calls|callee", query, re.I))
+    callee_cids: set[str] = set()
+    if deps_intent:
+        for cid in hit_cids:
+            for d in getattr(chunks_by_cid[cid], "deps", []) or []:
+                if d in chunks_by_cid:
+                    callee_cids.add(d)
+    if deps_intent:
+        decisions.append(f"deps_intent=1 callees={len(callee_cids)}")
+
     # guard 校验：guard_level=file 时文件一变全文件失效（粗）；=symbol 时只失效被改的符号（细）
     stale_now = 0
     for cid, mem in memory.items():
@@ -232,6 +265,8 @@ def assemble(
                 claim_ids.append(cid)      # 有已验证结论 -> 直接给结论（最便宜且最有用）
             elif cid in primary and "card" not in ablate:
                 card_ids.append(cid)       # 否则退一步给摘要卡
+            elif cid in callee_cids and "card" not in ablate:
+                card_ids.append(cid)       # 依赖题：被调用项给卡片（带 calls 列表）
             else:
                 ph_ids.append(cid)
             mem.used += 1
@@ -241,7 +276,10 @@ def assemble(
             unloaded.append(cid)  # 歧义候选：只占位符，不进原文
             continue
         if spent + ck.tokens > budget and include_raw:
-            unloaded.append(cid)  # 降级为"未加载占位符"，仍可 recall（M0 诊断修正）
+            if cid in callee_cids and "card" not in ablate:
+                card_ids.append(cid)   # 依赖题：装不下原文就给卡片（名字仍在）
+            else:
+                unloaded.append(cid)   # 降级为"未加载占位符"，仍可 recall（M0 诊断修正）
             continue
         # 原文必须自带出处：否则"它定义在哪一行"这类问题模型根本无从回答
         include_raw.append(f"### #{cid} | {ck.path}:{ck.start}-{ck.end}" + chr(10) + ck.text)
@@ -261,13 +299,16 @@ def assemble(
     if claim_ids:
         parts.append(_claims(memory, claim_ids))
     if card_ids:
-        parts.append(_cards(chunks_by_cid, card_ids))
+        parts.append(_cards(chunks_by_cid, card_ids, full_calls=deps_intent,
+                            repo_names=set(index)))
     if ph_ids:
         parts.append(_placeholders(memory, ph_ids))
     if unloaded:
         parts.append(_recallable(chunks_by_cid, unloaded))
     if include_raw:
         parts.append("[证据原文]\n" + "\n\n".join(include_raw))
+    if deps_intent and card_ids:
+        parts.append("[答题提示] 问“直接调用了哪些函数”时，只列 calls(repo) 里的名字，用英文逗号分隔。")
     parts.append(f"[问题] {query}")
     prompt = "\n\n".join(parts)
 
