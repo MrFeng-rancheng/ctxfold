@@ -213,3 +213,21 @@ tests/           自测（python tests/test_core.py）
 ## 许可
 
 MIT，见 [LICENSE](LICENSE)。
+
+## 运行时接口（核心与提示词解耦）
+
+核心状态机是独立本地模块，不藏在任何 Agent 的 Skill 提示词里：
+
+- `state.py` 管状态四元组 S = (C, G, D, L)：结论、守卫、1 跳依赖、表示层级
+- `assembler.py` 管装配（纯函数）：raw / card / claim / placeholder 四层 + 出处头
+- `service.py` 提供 stdio 行 JSON 服务：assemble / recall / commit / invalidate / snapshot
+- `skill/` 只是可选说明书，**删掉整个目录核心照常运行**
+
+三条不变式由代码保证，并有自动化测试（`tests/test_runtime_contract.py`）与
+免 pytest 的证据脚本（`scripts/verify_contract_demo.py`）：
+
+1. 每个 raw 块带 `### #<cid> | <file>:<start>-<end>` 出处头；
+2. 每个占位符都能 `recall <cid>` 取回原文，哈希一致时 `unchanged=true`；
+3. 改动某符号后 `invalidate` 给出 `invalidated` / `downstream` / `kept` 三组结果。
+
+详见 [docs/runtime-interface.md](docs/runtime-interface.md)。
