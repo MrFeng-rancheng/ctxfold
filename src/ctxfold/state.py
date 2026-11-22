@@ -11,6 +11,8 @@ MCP 服务、别的 agent 框架）都通过下面的方法或 service.py 的 JS
 """
 from __future__ import annotations
 
+import hashlib
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -129,6 +131,13 @@ class StateRuntime:
                 "header": f"### #{cid} | {ck.path}:{ck.start}-{ck.end}",
             })
 
+        # 落一份原文快照：这样即便文件后来被改，占位符仍能取回"当初那段"
+        for cid in (list(res.included_cids) + list(res.placeholder_cids)
+                    + list(res.card_cids) + list(res.claim_cids)):
+            ck = self.rt.by_cid.get(cid)
+            if ck is not None:
+                self._save_snapshot(cid, ck)
+
         self.rt.save_state()
         return {
             "prompt": res.prompt,
@@ -141,19 +150,44 @@ class StateRuntime:
             "messages": [{"role": "user", "content": res.prompt}],
         }
 
+    # ---------- 原文快照：让 recall 在文件改动后依然稳定 ----------
+    def _snap_dir(self) -> Path:
+        d = Path(self.rt.state_dir) / "snapshots"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def _snap_key(self, cid: str) -> str:
+        safe = re.sub(r"[^A-Za-z0-9_.-]", "_", cid)[-60:]
+        return f"{safe}.{hashlib.sha1(cid.encode('utf-8')).hexdigest()[:8]}"
+
+    def _save_snapshot(self, cid: str, ck) -> Path:
+        p = self._snap_dir() / f"{self._snap_key(cid)}.{ck.text_sha[:12]}.txt"
+        if not p.exists():
+            p.write_text(ck.text, encoding="utf-8")
+        return p
+
+    def _latest_snapshot(self, cid: str) -> Path | None:
+        cands = sorted(self._snap_dir().glob(f"{self._snap_key(cid)}.*.txt"))
+        return cands[-1] if cands else None
+
     # ---------- 按 ID 取回原文（稳定接口） ----------
-    def recall(self, cid: str) -> dict:
+    def recall(self, cid: str, prefer: str = "snapshot") -> dict:
         ck = self.rt.by_cid.get(cid)
         if ck is None:
             raise KeyError(f"unknown cid: {cid}")
         mem = self.rt.memory.get(cid)
         stored = mem.chunk_sha if mem is not None else ""
+        snap = self._latest_snapshot(cid) if prefer == "snapshot" else None
+        text = snap.read_text(encoding="utf-8") if snap is not None else ck.text
         return {
             "cid": cid,
             "path": ck.path,
             "start": ck.start,
             "end": ck.end,
-            "text": ck.text,
+            "text": text,
+            "current_text": ck.text,
+            "source": "snapshot" if snap is not None else "current",
+            "snapshot": str(snap) if snap is not None else "",
             "tokens": ck.tokens,
             "header": f"### #{cid} | {ck.path}:{ck.start}-{ck.end}",
             "sha_now": ck.text_sha,

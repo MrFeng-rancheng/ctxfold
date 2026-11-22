@@ -105,6 +105,22 @@ def test_origin_headers_and_recall(repo, tmp_path):
     assert st.recall(any_cid)["text"]
 
 
+def test_recall_survives_file_change(repo, tmp_path):
+    """文件改了之后，recall 仍能取回当初那段（快照），并明确告知 unchanged=False。"""
+    st = StateRuntime(repo, tmp_path / "st")
+    st.assemble("add 是怎么实现的")
+    add_cid = cid_of(st, "add")
+    before = st.rt.by_cid[add_cid].text
+
+    (repo / "base.py").write_text("def add(a, b):\n    return a + b + 0\n    # changed\n", encoding="utf-8")
+    st.rt.load()                       # 让内存里的 chunk 反映新文件
+    after = st.recall(add_cid)
+    assert after["text"] == before, "应取回固化时的原文（快照）"
+    assert after["source"] == "snapshot"
+    assert after["unchanged"] is False, "文件已变，必须标记 unchanged=False"
+    assert after["current_text"] != before
+
+
 # ---------------- 契约 3：失效传播与复用 ----------------
 def test_invalidation_propagates_and_reuse_holds(repo, tmp_path):
     st = StateRuntime(repo, tmp_path / "st")
