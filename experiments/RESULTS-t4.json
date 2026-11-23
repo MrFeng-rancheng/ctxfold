@@ -1,0 +1,44 @@
+[
+  {
+    "label": "标准库 json",
+    "n": 66,
+    "A": 0.364,
+    "H": 0.364,
+    "recall": 0.5,
+    "locate": 1.0,
+    "exc": 0.0,
+    "deps_strict": 0.091,
+    "f1": 0.137,
+    "f1_repo": 0.2,
+    "deps_empty": 12,
+    "tok": 1910
+  },
+  {
+    "label": "标准库 unittest",
+    "n": 180,
+    "A": 0.433,
+    "H": 0.328,
+    "recall": 0.6,
+    "locate": 1.0,
+    "exc": 0.267,
+    "deps_strict": 0.033,
+    "f1": 0.08,
+    "f1_repo": 0.12,
+    "deps_empty": 21,
+    "tok": 1750
+  },
+  {
+    "label": "本项目源码",
+    "n": 180,
+    "A": 0.444,
+    "H": 0.333,
+    "recall": 0.572,
+    "locate": 0.983,
+    "exc": 0.283,
+    "deps_strict": 0.067,
+    "f1": 0.163,
+    "f1_repo": 0.211,
+    "deps_empty": 18,
+    "tok": 1600
+  }
+]

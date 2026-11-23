@@ -118,6 +118,31 @@ def chunk_file(path: Path, root: Path) -> list[Chunk]:
             )
         )
 
+    # 模块头 chunk：imports + 模块级常量/赋值。
+    # 真实 bug 常落在这里，而它们不属于任何函数，符号级切块会漏掉。
+    head_lines: list[int] = []
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom, ast.Assign, ast.AnnAssign)):
+            head_lines.extend(range(node.lineno, (node.end_lineno or node.lineno) + 1))
+    if head_lines:
+        head_lines = sorted(set(head_lines))
+        text = "\n".join(lines[i - 1] for i in head_lines if i - 1 < len(lines))
+        if text.strip():
+            out.append(Chunk(
+                cid=f"{rel}::<module>",
+                path=rel,
+                name="<module>",
+                kind="module",
+                start=head_lines[0],
+                end=head_lines[-1],
+                text=text,
+                tokens=token_count(text),
+                file_sha=file_sha,
+                calls=set(),
+                call_order=[],
+                call_qualified=[],
+            ))
+
     def visit(node, prefix: str = "") -> None:
         """只切"叶子"：模块级函数与类内方法。
 

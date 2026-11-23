@@ -161,7 +161,7 @@ def run_real(questions, by_cid, index, sha, budget, max_calls=3):
             res = assemble("ours", q["query"], history, by_cid, index, memory, sha, budget=budget)
             history.append(res.history_append)
             messages = [
-                {"role": "system", "content": "你是代码助手。若需要未加载的实现细节，调用 recall(id)。"},
+                {"role": "system", "content": "你是代码助手。若需要未加载的实现细节，调用 recall(id)。回答必须严格遵守题目要求的格式：只输出列表本身，用英文逗号分隔，不要解释、不要编号、不要复述上下文；为空就只输出 none。"},
                 {"role": "user", "content": res.prompt},
             ]
             tokens = token_count(res.prompt)
@@ -298,7 +298,7 @@ def main() -> int:
 
     chunks, index, sha = load_corpus(corpus)
     by_cid = {c.cid: c for c in chunks}
-    questions = make_questions(by_cid, chunks, args.tasks * 2, args.seed)
+    questions = make_questions(by_cid, chunks, args.tasks * 2 if args.answerable_only else args.tasks, args.seed)
     if args.answerable_only:
         questions = [q for q in questions if q["q_deps"]["gold"]][: args.tasks]
 

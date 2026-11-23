@@ -25,3 +25,10 @@ Thumbs.db
 .secrets.env
 *.env
 .env.*
+
+# 临时运行日志（不入库）
+_*.log
+_*.err
+*.log
+*.err
+

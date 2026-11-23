@@ -132,6 +132,16 @@ def _query_symbols(
     """
     hits: list[tuple[str, bool]] = []
     seen: set[str] = set()
+    index_cids = {cid for v in index.values() for cid in (v if isinstance(v, list) else [v])}
+
+    # 文件名命中：查询里出现 "xxx.py" 时，把该文件的 chunk 直接当首选命中，
+    # 否则会被同名函数抢走（例如 tokenize.py 被 retrieve.py::tokenize 抢走）。
+    for fn in re.findall(r"[A-Za-z0-9_./-]+\.py", query):
+        base = fn.rsplit("/", 1)[-1]
+        for cid in index_cids:
+            if cid.split("::")[0].rsplit("/", 1)[-1] == base and cid not in seen:
+                seen.add(cid)
+                hits.append((cid, True))
 
     qualified = [k for k in index if "." in k and k in query]
     for key in qualified:
